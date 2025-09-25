@@ -1,0 +1,1 @@
+pip install flask selenium webdriver-manager requests python-dotenv

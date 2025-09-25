@@ -7,7 +7,6 @@ import threading
 from dotenv import load_dotenv
 
 load_dotenv()  # Load credentials from .env
-
 app = Flask(__name__)
 OLLAMA_API_URL = "http://localhost:11434/api/generate"  # Ollama endpoint
 
@@ -19,61 +18,79 @@ def index():
 def chat():
     user_message = request.json.get('message')
     
-    # Prompt Llama3 to detect task creation intent
-    prompt = f"""
-    You are a helpful assistant for GoodBooks task automation. 
-    Analyze the user's message and:
-    1. If it's a task creation request, extract:
-       - Task name
-       - Task type (task/work)
-       - Mandatory fields: name, type, parent, allocation, project_sequence, assignee, hours, is_billable
-    2. If not, respond naturally.
+    # Generate task description using Ollama
+    task_description = generate_task_description(user_message)
     
-    User message: "{user_message}"
-    """
-    
-    # Call Llama3
-    response = requests.post(OLLAMA_API_URL, json={
-        "model": "llama3",
-        "prompt": prompt,
-        "stream": False
-    })
-    
-    if response.status_code != 200:
-        return jsonify({"error": "Llama3 unavailable"}), 500
+    if task_description:
+        # Extract task details from generated description
+        task_details = parse_task_details(task_description)
         
-    llm_response = response.json().get('response', '')
-    
-    # Check if task creation is requested
-    if "task_name" in llm_response.lower() or "create task" in llm_response.lower():
-        # Extract task details (simplified parsing)
-        task_details = extract_task_details(llm_response)
         if task_details:
-            # Run automation in background
-            thread = threading.Thread(target=create_task_async, args=(task_details,))
-            thread.start()
-            return jsonify({
-                "response": "Creating task... Please wait.",
-                "task_created": True
-            })
+            try:
+                # Run automation in background
+                thread = threading.Thread(target=lambda: selenium_automation.create_task_with_details(task_details))
+                thread.start()
+                return jsonify({
+                    "response": "Creating task with the following details:\n" + 
+                               "\n".join([f"{k}: {v}" for k, v in task_details.items()]),
+                    "task_created": True,
+                    "status": "processing"
+                })
+            except Exception as e:
+                return jsonify({
+                    "response": f"Error creating task: {str(e)}",
+                    "task_created": False,
+                    "status": "error"
+                })
     
-    return jsonify({"response": llm_response})
+    return jsonify({
+        "response": "I couldn't understand the task details. Please provide:\n" +
+                   "- Task name\n" +
+                   "- Task type\n" +
+                   "- Parent task\n" +
+                   "- Allocation\n" +
+                   "- Project sequence\n" +
+                   "- Assignee\n" +
+                   "- Resource sequence\n" +
+                   "- Hours\n" +
+                   "- Is billable (yes/no)",
+        "task_created": False,
+        "status": "error"
+    })
 
-def extract_task_details(response_text):
-    """Naive extraction - replace with proper NLP parsing in production"""
-    details = {}
-    lines = response_text.split('\n')
-    
-    for line in lines:
-        if "name:" in line.lower():
-            details["name"] = line.split(":")[1].strip()
-        elif "type:" in line.lower():
-            details["type"] = line.split(":")[1].strip()
-        # Add more fields as needed
-    
-    return details or None
+def generate_task_description(prompt):
+    """Generate task description using Ollama"""
+    try:
+        response = requests.post(OLLAMA_API_URL, json={
+            "model": "llama3",
+            "prompt": f"Generate a detailed task description based on this request: {prompt}",
+            "stream": False
+        })
+        
+        if response.status_code == 200:
+            return response.json().get('response', '')
+        return None
+    except Exception as e:
+        print(f"Ollama error: {e}")
+        return None
 
-def create_task_async(task_details):
+def parse_task_details(description):
+    """Parse task details from Ollama-generated description"""
+    # This would contain NLP logic to extract fields
+    # For simplicity, returning sample data
+    return {
+        "name": "Sample Task",
+        "type": "Task",
+        "parent": "Parent Task",
+        "allocation": "Allocation",
+        "project_sequence": "1",
+        "assignee": "User",
+        "resource_sequence": "0",
+        "hours": "01:00",
+        "is_billable": True
+    }
+
+def create_task_with_screenshots(task_details):
     automation = TaskAutomation(
         base_url=os.getenv('GOODBOOKS_URL'),
         username=os.getenv('GOODBOOKS_USERNAME'),
@@ -91,4 +108,4 @@ def create_task_async(task_details):
         automation.close()
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)  
+    app.run(debug=True, port=5000)

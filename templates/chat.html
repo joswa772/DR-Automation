@@ -21,7 +21,11 @@
         .input-area { padding: 15px; border-top: 1px solid #eee; display: flex; gap: 10px; }
         .input-field { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 24px; outline: none; }
         .send-btn { background: #4CAF50; color: white; border: none; border-radius: 50%; width: 48px; height: 48px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-        @media (max-width: 600px) { .container { padding: 10px; } .chat-window { height: 400px; } }
+        .status-indicator { display: none; align-items: center; gap: 8px; }
+        .spinner { width: 20px; height: 20px; border: 3px solid #4CAF50; border-top-color: transparent; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .status-update { font-size: 14px; color: #666; margin-top: 5px; }
+        @media (max-width: 600px) { .chat-window { height: 400px; } }
     </style>
 </head>
 <body>
@@ -31,13 +35,72 @@
             <div class="messages" id="messages"></div>
             <div class="input-area">
                 <input type="text" id="message-input" class="input-field" placeholder="Ask me to create a task...">
-                <button class="send-btn" onclick="sendMessage()">➤</button>
+                <button class="send-btn" onclick="sendMessage()">
+                    <div class="status-indicator">
+                        <div class="spinner"></div>
+                        <span>Send</span>
+                    </div>
+                </button>
             </div>
         </div>
     </div>
 
     <script>
         const messagesContainer = document.getElementById('messages');
+        const messageInput = document.getElementById('message-input');
+        
+        function addMessage(content, isUser = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
+            
+            const messageContent = document.createElement('div');
+            messageContent.className = 'message-content';
+            messageContent.textContent = content;
+            
+            messageDiv.appendChild(messageContent);
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+        
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message) return;
+            
+            // Clear input
+            messageInput.value = '';
+            
+            // Add user message to chat
+            addMessage(message, true);
+            
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message: message })
+                });
+                
+                const data = await response.json();
+                
+                // Add bot response to chat
+                addMessage(data.response);
+                
+                if (data.task_created) {
+                    addMessage("Task creation started. Please wait while the automation completes...");
+                }
+            } catch (error) {
+                addMessage("Error: " + error.message);
+            }
+        }
+        
+        // Handle Enter key
+        messageInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
         
         function addMessage(content, isUser = false) {
             const messageDiv = document.createElement('div');
@@ -52,6 +115,25 @@
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
         
+        function setLoading(isLoading) {
+            const sendBtn = document.querySelector('.send-btn span');
+            if (isLoading) {
+                sendBtn.innerHTML = `
+                    <div class="status-indicator">
+                        <div class="spinner"></div>
+                        <span>Working...</span>
+                    </div>
+                `;
+            } else {
+                sendBtn.innerHTML = `
+                    <div class="status-indicator">
+                        <div class="spinner"></div>
+                        <span>Send</span>
+                    </div>
+                `;
+            }
+        }
+        
         async function sendMessage() {
             const input = document.getElementById('message-input');
             const message = input.value.trim();
@@ -61,6 +143,7 @@
             // Add user message
             addMessage(message, true);
             input.value = '';
+            setLoading(true);
             
             // Send to backend
             try {
@@ -74,11 +157,45 @@
                 addMessage(data.response);
             } catch (error) {
                 addMessage("Sorry, I couldn't process your request.");
+            } finally {
+                setLoading(false);
             }
         }
         
         // Initialize with welcome message
         addMessage("Hello! I can help you create tasks in GoodBooks. Just tell me what you need!");
+
+
+        async function sendMessage() {
+    const input = document.getElementById('message-input');
+    const message = input.value.trim();
+    
+    if (!message) return;
+    
+    // Add user message
+    addMessage(message, true);
+    input.value = '';
+    setLoading(true);
+    
+    try {
+        const response = await fetch('/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message })
+        });
+        
+        const data = await response.json();
+        addMessage(data.response, false);
+        
+        // Display generated description
+        document.getElementById('description-content').textContent = data.response;
+        document.getElementById('generated-description').style.display = 'block';
+    } catch (error) {
+        addMessage("Sorry, I couldn't process your request.");
+    } finally {
+        setLoading(false);
+    }
+}
     </script>
 </body>
 </html>

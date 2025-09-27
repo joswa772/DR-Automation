@@ -124,184 +124,159 @@ def create_new_task(task_name, parent_name, allocation_name, project_sequence, r
 
         def fill_select2_input(dropdown_text, value):
             """Helper function to fill select2 inputs reliably"""
-            max_attempts = 3
-            for attempt in range(max_attempts):
-                try:
-                    # Find and click the dropdown
-                    dropdown = wait.until(EC.element_to_be_clickable(
-                        (By.XPATH, f"//span[contains(@class,'select2-chosen') and contains(text(),'{dropdown_text}')]")
-                    ))
-                    time.sleep(1)  # Wait for any animations to complete
-                    dropdown.click()
-                    time.sleep(1)  # Wait for dropdown to open fully
-
-                    # Wait for the select2 dropdown to be visible
-                    wait.until(EC.presence_of_element_located((By.CLASS_NAME, "select2-drop-active")))
-                    
-                    # Find the input field in the active dropdown
-                    input_field = driver.find_element(By.CSS_SELECTOR, ".select2-drop-active input.select2-input")
-                    input_field.clear()
-                    time.sleep(0.5)
-                    
-                    # Type the value character by character
-                    for char in value:
-                        input_field.send_keys(char)
-                        time.sleep(0.1)
-                    time.sleep(0.5)
-
-                    if dropdown_text.strip().lower() == "task name":
-                        # For Task Name, just press Enter to confirm new entry
-                        input_field.send_keys(Keys.RETURN)
-                        time.sleep(0.5)
-                        # Ensure dropdown is closed
-                        wait.until_not(EC.presence_of_element_located((By.CLASS_NAME, "select2-drop-active")))
-                        # Release focus
-                        try:
-                            body = driver.find_element(By.TAG_NAME, "body")
-                            body.send_keys(Keys.ESCAPE)
-                            time.sleep(0.2)
-                            body.click()
-                            time.sleep(0.2)
-                        except Exception:
-                            pass
-                        print(f"✓ Entered new {dropdown_text}: '{value}'")
-                        return
-                    else:
-                        time.sleep(1)  # Wait for dropdown options to appear
-                        # Look for the matching option and click it
-                        try:
-                            # First try exact match
-                            option = wait.until(EC.element_to_be_clickable(
-                                (By.XPATH, f"//div[contains(@class, 'select2-result-label') and normalize-space(text())='{value}']")
-                            ))
-                        except:
-                            # If exact match fails, try contains match
-                            option = wait.until(EC.element_to_be_clickable(
-                                (By.XPATH, f"//div[contains(@class, 'select2-result-label') and contains(text(), '{value}')]")
-                            ))
-                        print(f"Found matching option: {option.text}")
-                        option.click()
-                        time.sleep(0.5)  # Wait for selection to complete
-                        # Ensure dropdown is closed
-                        wait.until_not(EC.presence_of_element_located((By.CLASS_NAME, "select2-drop-active")))
-                        # Extra robustness: send ESCAPE and click body to release focus
-                        try:
-                            body = driver.find_element(By.TAG_NAME, "body")
-                            body.send_keys(Keys.ESCAPE)
-                            time.sleep(0.2)
-                            body.click()
-                            time.sleep(0.2)
-                        except Exception:
-                            pass
-                        time.sleep(0.5)
-                        print(f"✓ Successfully filled {dropdown_text} with '{value}'")
-                        return
-                    
-                except Exception as e:
-                    if attempt < max_attempts - 1:  # Don't print on last attempt
-                        print(f"⚠️ Attempt {attempt + 1} failed for {dropdown_text}. Retrying...")
-                        time.sleep(1)  # Wait before retrying
-                        # Try to close any open dropdowns before retrying
-                        try:
-                            body = driver.find_element(By.TAG_NAME, "body")
-                            body.send_keys(Keys.ESCAPE)
-                            time.sleep(1)
-                        except:
-                            pass
-                    else:
-                        print(f"❌ Failed to fill {dropdown_text} after {max_attempts} attempts")
-                        raise  # Re-raise the last exception
             # Find and click the dropdown
             dropdown = wait.until(EC.element_to_be_clickable(
                 (By.XPATH, f"//span[contains(@class,'select2-chosen') and contains(text(),'{dropdown_text}')]")
             ))
-            time.sleep(1)  # Wait for any animations to complete
             dropdown.click()
-            time.sleep(1)  # Wait for dropdown to open fully
+            time.sleep(2)  # Increased wait for dropdown to open
 
-            # Wait for the select2 dropdown to be visible
-            wait.until(EC.presence_of_element_located((By.CLASS_NAME, "select2-drop-active")))
-            
-            # Find the input field in the active dropdown
-            input_field = driver.find_element(By.CSS_SELECTOR, ".select2-drop-active input.select2-input")
+            # Wait for and find the input field
+            input_field = wait.until(EC.presence_of_element_located(
+                (By.CSS_SELECTOR, ".select2-drop-active input.select2-input")
+            ))
             input_field.clear()
-            time.sleep(0.5)
+            time.sleep(1)  # Wait after clearing
             
-            # Type the value character by character
+            # Type the value
             for char in value:
                 input_field.send_keys(char)
                 time.sleep(0.1)
-            
-            time.sleep(1)  # Wait for dropdown options to appear
-            
-            # Press Enter to select the first matching option
+            time.sleep(1)  # Wait after typing
+
+            # Press Enter and wait for selection
             input_field.send_keys(Keys.RETURN)
-            time.sleep(1)  # Wait for selection to complete
-            
+            time.sleep(2)  # Increased wait after selection
+
             # Wait for dropdown to close
             wait.until_not(EC.presence_of_element_located((By.CLASS_NAME, "select2-drop-active")))
+            time.sleep(1)  # Additional wait after dropdown closes
+            
+            # Click somewhere else to ensure the dropdown is fully closed
+            body = driver.find_element(By.TAG_NAME, "body")
+            body.click()
+            time.sleep(1)
+            
+            print(f"✓ Filled {dropdown_text} with '{value}'")
 
         print("Filling Task Name...")
         fill_select2_input("Task Name", task_name)
         
-        print("Selecting Parent Name...")
-        fill_select2_input("Select Parent Name", parent_name)
-        
-        print("Selecting Allocation Name...")
-        fill_select2_input("Select Allocation Name", allocation_name)
+        # Helper for select2 fields by label
+        def fill_select2_by_label(label_text, value):
+            # Find the label
+            label_elem = wait.until(EC.presence_of_element_located((By.XPATH, f"//label[contains(normalize-space(.),'{label_text}') or contains(normalize-space(.),'{label_text}*')]")))
+            # Go up to the parent row/container
+            parent_row = label_elem.find_element(By.XPATH, './ancestor::*[self::div or self::td or self::tr][1]')
+            # Find the first select2 container in that row after the label
+            containers = parent_row.find_elements(By.XPATH, ".//span[contains(@class,'select2-container')]")
+            # Heuristic: pick the rightmost if label is on left, or first after label
+            container = None
+            for c in containers:
+                if c.location['x'] > label_elem.location['x']:
+                    container = c
+                    break
+            if not container and containers:
+                container = containers[-1]
+            if not container:
+                ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+                os.makedirs('screenshots', exist_ok=True)
+                driver.save_screenshot(f'screenshots/parent_container_not_found_{ts}.png')
+                raise Exception(f"Could not find select2 container for '{label_text}' in row")
+            driver.execute_script("arguments[0].scrollIntoView(true);", container)
+            try:
+                container.click()
+            except Exception:
+                driver.execute_script("arguments[0].click();", container)
+            time.sleep(0.5)
+            # Try multiple selectors for the input
+            input_selectors = [
+                '.select2-drop-active input.select2-input',
+                '.select2-drop input.select2-input',
+                'input.select2-input',
+                '.select2-search input',
+            ]
+            input_field = None
+            for sel in input_selectors:
+                try:
+                    input_field = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, sel)))
+                    break
+                except Exception:
+                    continue
+            if not input_field:
+                ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+                driver.save_screenshot(f'screenshots/parent_input_not_found_{ts}.png')
+                raise Exception(f"Could not find select2 input for '{label_text}'")
+            input_field.clear()
+            for ch in value:
+                input_field.send_keys(ch)
+                time.sleep(0.05)
+            time.sleep(0.5)
+            # Try to click the matching result
+            try:
+                opt = wait.until(EC.element_to_be_clickable((By.XPATH, f"//div[contains(@class,'select2-result-label') and normalize-space(text())='{value}']")))
+                opt.click()
+            except Exception:
+                input_field.send_keys(Keys.RETURN)
+            wait.until_not(EC.presence_of_element_located((By.CLASS_NAME, 'select2-drop-active')))
+            time.sleep(0.3)
+            print(f"✓ {label_text} set to '{value}'")
 
-        # Fill Project Sequence
-        project_sequence_input = wait.until(EC.presence_of_element_located(
-            (By.ID, "ProjectSequence")
-        ))
+        # Step-by-step for each circled field
+        print("Selecting Parent Name...")
+        fill_select2_by_label('Parent', parent_name)
+
+        print("Selecting Requester...")
+        fill_select2_by_label('Employee Name', requester_name)
+
+
+        print("Selecting Activity...")
+        try:
+            from task_input import TASK_DETAILS
+            activity_val = TASK_DETAILS.get('activity_name', '')
+        except Exception:
+            activity_val = ''
+        fill_select2_by_label('Activity Name', activity_val)
+
+        print("Selecting Allocation Name...")
+        fill_select2_by_label('Allocation Name', allocation_name)
+
+
+        print("Selecting Allocation Split...")
+        try:
+            from task_input import TASK_DETAILS
+            alloc_split_val = TASK_DETAILS.get('allocation_split', '')
+        except Exception:
+            alloc_split_val = ''
+        try:
+            fill_select2_by_label('Allocation Split', alloc_split_val)
+        except Exception:
+            print("(Optional) Allocation Split not set or not present.")
+
+        print("Setting Project Sequence...")
+        project_sequence_input = wait.until(EC.presence_of_element_located((By.ID, "ProjectSequence")))
         project_sequence_input.clear()
         project_sequence_input.send_keys(str(project_sequence))
+        time.sleep(0.3)
 
-        # Resource Sequence
-        resource_sequence_input = wait.until(EC.presence_of_element_located(
-            (By.ID, "ResourceSequence")
-        ))
-        resource_sequence_input.clear()
-        resource_sequence_input.send_keys(str(resource_sequence))
-
-        # Task Planned Hours
-        hours_input = wait.until(EC.presence_of_element_located(
-            (By.ID, "TaskPlannedHours")
-        ))
+        print("Setting Hours...")
+        hours_input = wait.until(EC.presence_of_element_located((By.ID, "TaskPlannedHours")))
         hours_input.clear()
         hours_input.send_keys(hours)
+        time.sleep(0.3)
 
-        # Is Billable checkbox
-        print(f"Setting billable status to: {is_billable}")
-        billable_checkbox = wait.until(EC.presence_of_element_located(
-            (By.ID, "IsBillable")
-        ))
-        is_billable = str(is_billable).lower()  # Convert to lowercase string
-        
-        if is_billable == 'yes':
-            # Check if it's not already checked
+        print("Setting Is Billable checkbox...")
+        billable_checkbox = wait.until(EC.presence_of_element_located((By.ID, "IsBillable")))
+        is_billable_val = str(is_billable).lower()
+        if is_billable_val in ('yes', 'y', 'true', '1'):
             if not billable_checkbox.is_selected():
                 billable_checkbox.click()
                 print("✓ Checked the billable checkbox")
-        elif is_billable == 'no':
-            # Uncheck if it's currently checked
+        else:
             if billable_checkbox.is_selected():
                 billable_checkbox.click()
                 print("✓ Unchecked the billable checkbox")
-        else:
-            print(f"⚠️ Warning: Invalid billable value '{is_billable}'. Use 'yes' or 'no'.")
-
-        # Select Requester
-        requester_dropdown = wait.until(EC.element_to_be_clickable(
-            (By.XPATH, "//span[contains(@class,'select2-chosen') and text()='Select Employee Name']")
-        ))
-        requester_dropdown.click()
-        requester_input = wait.until(EC.presence_of_element_located(
-            (By.CSS_SELECTOR, "input.select2-input")
-        ))
-        requester_input.send_keys(requester_name)
-        requester_input.send_keys(Keys.RETURN)
-        time.sleep(1)
+        time.sleep(0.3)
 
         print("✅ All task details filled successfully")
         print("⏳ Waiting for confirmation...")

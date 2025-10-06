@@ -26,13 +26,6 @@ os.makedirs('logs', exist_ok=True)
 logging.basicConfig(filename='logs/punch_log.txt', level=logging.INFO, 
                    format='%(asctime)s %(levelname)s: %(message)s')
 
-# Load .env variables
-load_dotenv()
-URL = os.getenv("URL")
-SERVER = os.getenv("SERVER")
-EMPCODE = os.getenv("EMPCODE")
-PASSWORD = os.getenv("PASSWORD")
-
 def create_new_task(task_name, parent_name, allocation_name, project_sequence, resource_sequence, hours, is_billable, requester_name):
     """
     Create a new task with the specified details.
@@ -107,20 +100,49 @@ def create_new_task(task_name, parent_name, allocation_name, project_sequence, r
         print("📋 Clicked Task")
         time.sleep(5)  # Wait for task screen to load
 
-        # Wait for page to load and click the green plus button
-        print("Looking for Add button...")
-        add_button = wait.until(EC.element_to_be_clickable(
-            (By.XPATH, "//a[contains(@class, 'btn-green') and contains(@onclick, 'addnewserviceForTask')]")
-        ))
-        add_button.click()
-        print("➕ Clicked Add button")
-        time.sleep(3)  # Wait for form to load
-        
-        # Wait for task creation form
-        print("📝 Filling task details...")
+        # --- REVISED SECTION FOR CLICKING THE ADD BUTTON ---
+        print("🔎 Looking for the 'Add' button...")
+        try:
+            # Wait up to 20 seconds for the button to be clickable
+            add_button = wait.until(EC.element_to_be_clickable(
+                (By.XPATH, "//a[contains(@class, 'btn-green') and contains(@onclick, 'addnewserviceForTask')]")
+            ))
+            print("✅ 'Add' button found and is clickable.")
+            
+            # Take a screenshot right before clicking for debugging
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            os.makedirs("screenshots", exist_ok=True)
+            driver.save_screenshot(f"screenshots/before_add_click_{timestamp}.png")
+            print(f"📸 Saved screenshot before clicking 'Add' button.")
+
+            # Standard click attempt
+            add_button.click()
+            print("➕ Clicked 'Add' button using standard click.")
+
+        except Exception as e:
+            print(f"⚠️ Standard click failed: {e}. Trying JavaScript click...")
+            try:
+                # Fallback: Find the element again and use JavaScript to click it
+                add_button_js = driver.find_element(By.XPATH, "//a[contains(@class, 'btn-green') and contains(@onclick, 'addnewserviceForTask')]")
+                driver.execute_script("arguments[0].click();", add_button_js)
+                print("➕ Successfully clicked 'Add' button using JavaScript.")
+            except Exception as js_e:
+                print(f"❌ JavaScript click also failed: {js_e}")
+                # Take a screenshot of the failure state
+                timestamp_fail = datetime.now().strftime("%Y%m%d_%H%M%S")
+                driver.save_screenshot(f"screenshots/add_button_fail_{timestamp_fail}.png")
+                print(f"📸 Saved failure screenshot. Halting execution.")
+                logging.error(f"Could not click the 'Add' button. Error: {js_e}", exc_info=True)
+                driver.quit()
+                exit() # Exit the script if we can't proceed
+        # --- END OF REVISED SECTION ---
+
+        print("⏳ Waiting for the task creation form to load...")
+        # Increased wait time for the form modal to appear
         wait.until(EC.presence_of_element_located(
             (By.XPATH, "//div[contains(@class, 'modal-content')]")
         ))
+        print("✅ Task creation form is now visible.")
 
         def fill_select2_input(dropdown_text, value):
             """Helper function to fill select2 inputs reliably"""
@@ -147,124 +169,72 @@ def create_new_task(task_name, parent_name, allocation_name, project_sequence, r
             # Press Enter and wait for selection
             input_field.send_keys(Keys.RETURN)
             time.sleep(2)  # Increased wait after selection
-
-            # Wait for dropdown to close
-            wait.until_not(EC.presence_of_element_located((By.CLASS_NAME, "select2-drop-active")))
-            time.sleep(1)  # Additional wait after dropdown closes
-            
-            # Click somewhere else to ensure the dropdown is fully closed
-            body = driver.find_element(By.TAG_NAME, "body")
-            body.click()
-            time.sleep(1)
             
             print(f"✓ Filled {dropdown_text} with '{value}'")
 
+        # Fill Task Name
         print("Filling Task Name...")
         fill_select2_input("Task Name", task_name)
         
-        # Helper for select2 fields by label
-        def fill_select2_by_label(label_text, value):
-            # Find the label
-            label_elem = wait.until(EC.presence_of_element_located((By.XPATH, f"//label[contains(normalize-space(.),'{label_text}') or contains(normalize-space(.),'{label_text}*')]")))
-            # Go up to the parent row/container
-            parent_row = label_elem.find_element(By.XPATH, './ancestor::*[self::div or self::td or self::tr][1]')
-            # Find the first select2 container in that row after the label
-            containers = parent_row.find_elements(By.XPATH, ".//span[contains(@class,'select2-container')]")
-            # Heuristic: pick the rightmost if label is on left, or first after label
-            container = None
-            for c in containers:
-                if c.location['x'] > label_elem.location['x']:
-                    container = c
-                    break
-            if not container and containers:
-                container = containers[-1]
-            if not container:
-                ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-                os.makedirs('screenshots', exist_ok=True)
-                driver.save_screenshot(f'screenshots/parent_container_not_found_{ts}.png')
-                raise Exception(f"Could not find select2 container for '{label_text}' in row")
-            driver.execute_script("arguments[0].scrollIntoView(true);", container)
-            try:
-                container.click()
-            except Exception:
-                driver.execute_script("arguments[0].click();", container)
-            time.sleep(0.5)
-            # Try multiple selectors for the input
-            input_selectors = [
-                '.select2-drop-active input.select2-input',
-                '.select2-drop input.select2-input',
-                'input.select2-input',
-                '.select2-search input',
-            ]
-            input_field = None
-            for sel in input_selectors:
-                try:
-                    input_field = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, sel)))
-                    break
-                except Exception:
-                    continue
-            if not input_field:
-                ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-                driver.save_screenshot(f'screenshots/parent_input_not_found_{ts}.png')
-                raise Exception(f"Could not find select2 input for '{label_text}'")
-            input_field.clear()
-            for ch in value:
-                input_field.send_keys(ch)
-                time.sleep(0.05)
-            time.sleep(0.5)
-            # Try to click the matching result
-            try:
-                opt = wait.until(EC.element_to_be_clickable((By.XPATH, f"//div[contains(@class,'select2-result-label') and normalize-space(text())='{value}']")))
-                opt.click()
-            except Exception:
-                input_field.send_keys(Keys.RETURN)
-            wait.until_not(EC.presence_of_element_located((By.CLASS_NAME, 'select2-drop-active')))
-            time.sleep(0.3)
-            print(f"✓ {label_text} set to '{value}'")
+        # Fill Parent Name
+        print("Filling Parent Name...")
+        fill_select2_input("Select Parent Name", parent_name)
 
-        # Step-by-step for each circled field
-        print("Selecting Parent Name...")
-        fill_select2_by_label('Parent', parent_name)
+        # Fill Allocation Name
+        print("Filling Allocation Name...")
+        fill_select2_input("Select Allocation Name", allocation_name)
 
-        print("Selecting Requester...")
-        fill_select2_by_label('Employee Name', requester_name)
-
-
-        print("Selecting Activity...")
-        try:
-            from task_input import TASK_DETAILS
-            activity_val = TASK_DETAILS.get('activity_name', '')
-        except Exception:
-            activity_val = ''
-        fill_select2_by_label('Activity Name', activity_val)
-
-        print("Selecting Allocation Name...")
-        fill_select2_by_label('Allocation Name', allocation_name)
-
-
-        print("Selecting Allocation Split...")
-        try:
-            from task_input import TASK_DETAILS
-            alloc_split_val = TASK_DETAILS.get('allocation_split', '')
-        except Exception:
-            alloc_split_val = ''
-        try:
-            fill_select2_by_label('Allocation Split', alloc_split_val)
-        except Exception:
-            print("(Optional) Allocation Split not set or not present.")
-
+        # Fill Project Sequence
         print("Setting Project Sequence...")
         project_sequence_input = wait.until(EC.presence_of_element_located((By.ID, "ProjectSequence")))
         project_sequence_input.clear()
         project_sequence_input.send_keys(str(project_sequence))
         time.sleep(0.3)
 
+        # Fill Incharge (Resource)
+        print("Filling Incharge...")
+        # This field appears to be already selected with "Joswa" in the HTML, but we'll update it if needed
+        try:
+            incharge_dropdown = wait.until(EC.element_to_be_clickable(
+                (By.XPATH, "//span[contains(@class,'select2-chosen') and contains(.,'Joswa')]/ancestor::a[contains(@class,'select2-choice')]")
+            ))
+            incharge_dropdown.click()
+            time.sleep(2)
+            
+            input_field = wait.until(EC.presence_of_element_located(
+                (By.CSS_SELECTOR, ".select2-drop-active input.select2-input")
+            ))
+            input_field.clear()
+            time.sleep(1)
+            
+            # Type the value (assuming we have an incharge parameter, otherwise use the default)
+            incharge_value = "Joswa"  # Default value, could be parameterized
+            for char in incharge_value:
+                input_field.send_keys(char)
+                time.sleep(0.1)
+            time.sleep(1)
+            
+            input_field.send_keys(Keys.RETURN)
+            time.sleep(2)
+            print(f"✓ Filled Incharge with '{incharge_value}'")
+        except Exception as e:
+            print(f"⚠️ Could not update Incharge field: {str(e)}")
+
+        # Fill Resource Sequence
+        print("Setting Resource Sequence...")
+        resource_sequence_input = wait.until(EC.presence_of_element_located((By.ID, "ResourceSequence")))
+        resource_sequence_input.clear()
+        resource_sequence_input.send_keys(str(resource_sequence))
+        time.sleep(0.3)
+
+        # Fill Hours
         print("Setting Hours...")
         hours_input = wait.until(EC.presence_of_element_located((By.ID, "TaskPlannedHours")))
         hours_input.clear()
         hours_input.send_keys(hours)
         time.sleep(0.3)
 
+        # Set Is Billable checkbox
         print("Setting Is Billable checkbox...")
         billable_checkbox = wait.until(EC.presence_of_element_located((By.ID, "IsBillable")))
         is_billable_val = str(is_billable).lower()
@@ -277,6 +247,10 @@ def create_new_task(task_name, parent_name, allocation_name, project_sequence, r
                 billable_checkbox.click()
                 print("✓ Unchecked the billable checkbox")
         time.sleep(0.3)
+
+        # Fill Requester
+        print("Filling Requester...")
+        fill_select2_input("Select Employee Name", requester_name)
 
         print("✅ All task details filled successfully")
         print("⏳ Waiting for confirmation...")
